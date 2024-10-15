@@ -12,19 +12,16 @@ def create_yf_df(ticker):
 
     end_date = datetime.datetime.now() - datetime.timedelta(days=1)
     start_date = end_date - datetime.timedelta(days=365)
-    df = pd.DataFrame()
+
+    dfs = {}
 
     for tick in ticker:
         stock = yf.Ticker(tick)
-        stock_data = stock.history(start=start_date, end=end_date, interval="1d")
-        stock_data['symbol'] = tick
-        df = pd.concat([df, stock_data])
+        stock_data = stock.history(start=start_date, end=end_date, interval="1h")
+        stock_data = stock_data.reset_index()
+        stock_data = stock_data.drop(['Dividends', 'Stock Splits', 'High', 'Low', ], axis=1)
+        stock_data['Returns'] = stock_data['Close'] - stock_data['Close'].shift(1)
+        stock_data = stock_data.dropna()
+        dfs[tick] = stock_data
 
-    # Clean
-    df = df.reset_index()
-    df = df.drop(['Dividends', 'Stock Splits', 'High', 'Low', ], axis=1)
-    df['Returns'] = df['Close'] - df['Close'].shift(1)
-    df = df.drop(index=0)
-
-    print(df)
-    return df
+    return dfs

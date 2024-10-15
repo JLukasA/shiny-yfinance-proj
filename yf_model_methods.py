@@ -1,5 +1,3 @@
-
-
 def random_forest_model(ticker, df):
     # import libs
     import math
@@ -85,7 +83,7 @@ def random_forest_model(ticker, df):
         plt.show()
 
 
-def LSTM_model(ticker, df):
+""" def LSTM_model(ticker, df):
     # import
     from sklearn.preprocessing import MinMaxScaler
     from sklearn.metrics import mean_squared_error
@@ -301,3 +299,4 @@ def LSTM_model(ticker, df):
     # run
     fig = run(ticker, df, forecast_length, time_lags, n_epochs, batch_size, n_neurons, dropout, number_of_forecasts)
     return fig
+ """
