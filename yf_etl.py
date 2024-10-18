@@ -38,12 +38,6 @@ def check_ticker_validity(ticker: str) -> bool:
     return len(info) > 0
 
 
-def yf_df_to_db(engine, tickers: list[str], dfs: dict):
-
-    for ticker in tickers:
-        dfs[ticker].to_sql('yf_stock_data', engine, index=False, if_exists='append')
-
-
 def check_data_validity(df: pd.DataFrame) -> bool:
 
     # check if empty
@@ -81,7 +75,6 @@ def run_yf_etl(tickers: list[str]):
     print("Database connection initiated.")
     cursor = conn.cursor()
     for ticker in data:
-
         sql_query = f""""
         CREATE TABLE IF NOT EXISTS {ticker}(
             timestamp VARCHAR(200),
@@ -93,8 +86,13 @@ def run_yf_etl(tickers: list[str]):
         )
         """
         cursor.execute(sql_query)
+
+        # filter out data that's already in database
+        old_data = pd.read_sql(f"SELECT timestamp FROM {ticker}", conn)
+        new_data = data[ticker][~data[ticker]['timestamp'].isin(old_data['timestamp'])]
+        new_data.to_sql(ticker, engine, index=False, if_exists='append')
         try:
-            data[ticker].to_sql(ticker, engine, index=False, if_exists='append')
+            new_data.to_sql(ticker, engine, index=False, if_exists='append')
         except:
             print("Failed uploading data to database.")
 
