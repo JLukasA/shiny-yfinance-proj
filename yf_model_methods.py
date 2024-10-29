@@ -6,31 +6,25 @@ def random_forest_model(ticker, df):
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.metrics import precision_score
 
-    # create target
-    df["Tomorrow"] = df["Close"].shift(-1)
-    df["Target"] = (df["Tomorrow"] > df["Close"]).astype(int)
-
-    predictors = ["Close", "Volume"]
-    # create additional predictors based on horizons
-    horizons = [2, 5, 25, 50, 250]
-    for horizon in horizons:
-        rolling_mean = df.rolling(horizon).mean()
-        horizon_ratio = f"Close_ratio_{horizon}"
-        df[horizon_ratio] = df["Close"] / rolling_mean["Close"]
-        horizon_trend = f"Trend_{horizon}"
-        df[horizon_trend] = df.shift(1).rolling(horizon).sum()["Target"]
-        predictors += [horizon_ratio, horizon_trend]
-    df = df.dropna()
-
-    # generate model, train, predict, plot
-    model = RandomForestClassifier(n_estimators=200, min_samples_split=50, random_state=1)  # OBS N ESTIMATORS LOW
-    predictions, predictions_50 = backtest(df, model, predictors, confidence=55)
-    PS = precision_score(predictions["Target"], predictions["Predictions"]).round(4)
-    PS50 = precision_score(predictions_50["Target"], predictions_50["Predictions"]).round(4)
-    rfplot(predictions, predictions_50, PS, PS50, ticker, df)
+    def generate_additional_data(df: pd.DataFrame):
+        # create target
+        df["tomorrow"] = df["close"].shift(-1)
+        df["target"] = (df["tomorrow"] > df["close"]).astype(int)
+        predictors = ["close", "volume", "returns"]
+        # create additional predictors based on horizons
+        horizons = [2, 5, 10, 25, 50]
+        for horizon in horizons:
+            rolling_mean = df.select_dtypes('number').rolling(horizon).mean()
+            horizon_ratio = f"close_ratio_{horizon}"
+            df[horizon_ratio] = df["close"] / rolling_mean["close"]
+            horizon_trend = f"trend_{horizon}"
+            df[horizon_trend] = df["target"].shift(1).rolling(horizon).sum()
+            predictors += [horizon_ratio, horizon_trend]
+        df = df.dropna()
+        return df, predictors
 
     def predict(train_data, test_data, predictors, model, confidence):
-        model.fit(train_data[predictors], train_data["Target"])
+        model.fit(train_data[predictors], train_data["target"])
         predictions = model.predict_proba(test_data[predictors])[:, 1]
         predictions_conf = predictions.copy()
         predictions_50 = predictions.copy()
@@ -38,10 +32,10 @@ def random_forest_model(ticker, df):
         predictions_conf[predictions < confidence / 100] = 0
         predictions_50[predictions >= 50 / 100] = 1
         predictions_50[predictions < 50 / 100] = 0
-        predictions_conf = pd.Series(predictions_conf, index=test_data.index, name="Predictions")
-        predictions_50 = pd.Series(predictions_50, index=test_data.index, name="Predictions")
-        combined = pd.concat([test_data["Target"], predictions_conf], axis=1)
-        combined_50 = pd.concat([test_data["Target"], predictions_50], axis=1)
+        predictions_conf = pd.Series(predictions_conf, index=test_data.index, name="predictions")
+        predictions_50 = pd.Series(predictions_50, index=test_data.index, name="predictions")
+        combined = pd.concat([test_data["target"], predictions_conf], axis=1)
+        combined_50 = pd.concat([test_data["target"], predictions_50], axis=1)
         return combined, combined_50
 
     def backtest(df, model, predictors, confidence):
@@ -58,20 +52,20 @@ def random_forest_model(ticker, df):
             predictions_df_50.append(prediction_50)
         return pd.concat(predictions_df), pd.concat(predictions_df_50)
 
-    def rfplot(preds, preds_50, PS, PS50, ticker, df):
+    def plot_results(preds, preds_50, PS, PS50, ticker, df, condifence):
         # plot
         fig, axs = plt.subplots(2, 2, figsize=(18, 9))
         # Upper left
-        axs[0, 0].plot(df["Close"])
+        axs[0, 0].plot(df["close"])
         axs[0, 0].set_title(f"Historic Closing price {ticker}")
         # Upper right
-        axs[0, 1].plot(preds["Target"][-150:], label="Target")
-        axs[0, 1].plot(preds["Predictions"][-150:], label="Predictions (60%)")
-        axs[0, 1].plot(preds_50["Predictions"][-150:], label="Predictions (50%)")
+        axs[0, 1].plot(preds["target"][-150:], label="Target")
+        axs[0, 1].plot(preds["predictions"][-150:], label="Predictions (60%)")
+        axs[0, 1].plot(preds_50["predictions"][-150:], label="Predictions (50%)")
         axs[0, 1].set_title("Prediction target and predictions")
         axs[0, 1].legend(loc="upper right")
         # Lower left
-        axs[1, 0].text(0.5, 0.7, f"Precision score (60% confidence) : {PS}", ha="center", va="center", fontsize=24)
+        axs[1, 0].text(0.5, 0.7, f"Precision score ({confidence}% confidence) : {PS}", ha="center", va="center", fontsize=24)
         axs[1, 0].text(0.5, 0.3, f"Precision score (50% confidence): {PS50}", ha="center", va="center", fontsize=24)
         axs[1, 0].axis("off")
         axs[1, 0].set_title("Precision score")
@@ -82,8 +76,18 @@ def random_forest_model(ticker, df):
         plt.tight_layout()
         plt.show()
 
+    # run model
+    df, predictors = generate_additional_data(df)
+    # generate model, train, predict, plot
+    confidence = 55
+    model = RandomForestClassifier(n_estimators=500, min_samples_split=50, random_state=1)  # OBS N ESTIMATORS LOW
+    predictions, predictions_50 = backtest(df, model, predictors, confidence)
+    PS = precision_score(predictions["target"], predictions["predictions"]).round(4)
+    PS50 = precision_score(predictions_50["target"], predictions_50["predictions"]).round(4)
+    plot_results(predictions, predictions_50, PS, PS50, ticker, df, confidence)
 
-""" def LSTM_model(ticker, df):
+
+def LSTM_model(ticker, df):
     # import
     from sklearn.preprocessing import MinMaxScaler
     from sklearn.metrics import mean_squared_error
@@ -299,4 +303,3 @@ def random_forest_model(ticker, df):
     # run
     fig = run(ticker, df, forecast_length, time_lags, n_epochs, batch_size, n_neurons, dropout, number_of_forecasts)
     return fig
- """

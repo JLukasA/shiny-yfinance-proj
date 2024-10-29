@@ -6,9 +6,6 @@ import pandas as pd
 pd.options.mode.chained_assignment = None
 
 
-""" Fetches financial data from Yahoo using one or more tickers, puts it in a dictionary of pandas DataFrames and returns the dictionary. """
-
-
 def create_yf_df(tickers: list[str]) -> dict:
     from datetime import datetime
     import datetime
@@ -46,7 +43,7 @@ def check_data_validity(df: pd.DataFrame) -> bool:
         return False
 
     # check primary key
-    if pd.Series(df['date']).is_unique:
+    if pd.Series(df['timestamp']).is_unique:
         pass
     else:
         raise Exception("Primary key is not unique.")
@@ -58,9 +55,7 @@ def check_data_validity(df: pd.DataFrame) -> bool:
     return True
 
 
-def run_yf_etl(tickers: list[str]):
-    DATABASE_LOCATION = 'sqlite:///yf_stock_data.sqlite'
-
+def run_yf_etl(tickers: list[str], database_location: str):
     # fetch data using yfinance
     data = create_yf_df(tickers)
 
@@ -70,31 +65,66 @@ def run_yf_etl(tickers: list[str]):
             print(f"{ticker} data valid.")
 
     # load data to SQL database
-    engine = create_engine(DATABASE_LOCATION)
-    conn = sqlite3.connect('yf_stock_data.sqlite')
-    print("Database connection initiated.")
+    engine = create_engine(database_location)
+    s = database_location.replace('sqlite:///', '')
+    conn = sqlite3.connect(s)
+    print("Database connection initiated in preparation for upload.")
     cursor = conn.cursor()
     for ticker in data:
-        sql_query = f""""
-        CREATE TABLE IF NOT EXISTS {ticker}(
-            timestamp VARCHAR(200),
-            open DOUBLE(9, 2),
-            close DOUBLE(9, 2),
-            volume INT(12),
-            returns DOUBLE(9, 2),
-            CONSTRAINT primary_key_constraint PRIMARY KEY (timestamp)
-        )
-        """
-        cursor.execute(sql_query)
 
-        # filter out data that's already in database
-        old_data = pd.read_sql(f"SELECT timestamp FROM {ticker}", conn)
+        # check database for ticker data, filter out if exists
+        try:
+            old_data = pd.read_sql(f"SELECT timestamp FROM {ticker}", conn)
+            print(f"Data for {ticker} present in database, filtering out before uploading.")
+        except (sqlite3.OperationalError, pd.io.sql.DatabaseError) as e:
+            old_data = pd.DataFrame(columns=['timestamp'])  # empty DataFrame to skip filtering
+            print(f"No data for {ticker} available in database, no filtering needed.")
+
+        # ensure same type for filtering with isin()
+        old_data['timestamp'] = pd.to_datetime(old_data['timestamp'])
+        data[ticker]['timestamp'] = pd.to_datetime(data[ticker]['timestamp'])
+        # generate filtered dataframe for upload
         new_data = data[ticker][~data[ticker]['timestamp'].isin(old_data['timestamp'])]
-        new_data.to_sql(ticker, engine, index=False, if_exists='append')
+
         try:
             new_data.to_sql(ticker, engine, index=False, if_exists='append')
+            print(f"{ticker} data uploaded.")
         except:
             print("Failed uploading data to database.")
 
     conn.close()
     print("Database connection concluded.")
+
+
+def fetch_data(ticker: str, database_location: str) -> pd.DataFrame:
+    s = database_location.replace('sqlite:///', '')
+    conn = sqlite3.connect(s)
+    print("Database connection for fetching data initiated.")
+    print(f"Fetching data for {ticker}")
+    try:
+        data = pd.read_sql(f"SELECT * FROM {ticker}", conn)
+        print(f"Data for {ticker} fetched from database.")
+    except (sqlite3.OperationalError, pd.io.sql.DatabaseError) as e:
+        print(f"No data for {ticker} available in database.")
+        data = pd.DataFrame()
+    conn.close()
+    print("Database connection concluded.")
+    return data
+
+
+def get_tickers_in_db(database_location: str) -> list:
+    s = database_location.replace('sqlite:///', '')
+    conn = sqlite3.connect(s)
+    print("Database connection for fetching tickers initiated.")
+    cursor = conn.cursor()
+    query = "SELECT name FROM sqlite_master WHERE type='table';"
+    try:
+        cursor.execute(query)
+        tables = cursor.fetchall()  # tuples containing a single string, table name aka ticker
+        tickers = [table[0] for table in tables]  # create list of strings
+    except sqlite3.Error as e:
+        print(f"Error fetching tickers: {e}")
+        tickers = []
+    conn.close()
+    print("Database connection concluded.")
+    return tickers

@@ -1,10 +1,43 @@
 import yf_etl
-from yf_model_methods import random_forest_model
+import yf_model_methods
 import pandas as pd
-import sqlite3
-from sqlalchemy import create_engine
+
+database_location = 'sqlite:///yf_stock_data.sqlite'
+
+available_tickers = yf_etl.get_tickers_in_db(database_location)
+
+tickers = []
+while True:
+    print(f"Currently available tickers in database: {available_tickers}. ")
+
+    while True:
+        ans = input("Do you wish to add another ticker to the database or update one of the available tickers? Answer yes or no: ").upper()
+        if ans in ["YES", "Y", "NO", "N"]:
+            break
+        else:
+            print("Invalid input. Answer with yes/y or no/n.")
+
+    if ans in ["YES", "Y"]:
+        ticker = input("Please type in the ticker you want to add to the database or update : ").upper()
+        tickers.append(ticker)
+    if ans in ["NO", "N"]:
+        break
+
+if tickers:
+    yf_etl.run_yf_etl(tickers, database_location)
 
 
-tickers = ['NVDA', 'MSFT']
+# update available tickers after adding to db
+available_tickers = yf_etl.get_tickers_in_db(database_location)
 
-yf_etl.run_yf_etl(tickers)
+while True:
+    ticker = input(f"Select data from the available tickers: {available_tickers}: ").upper()
+    if ticker in available_tickers:
+        break
+    else:
+        print("Ticker not available, try again.")
+
+
+data = yf_etl.fetch_data(ticker, database_location)
+print(data.columns)
+yf_model_methods.random_forest_model(ticker, data)
