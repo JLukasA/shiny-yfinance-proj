@@ -11,7 +11,7 @@ def create_yf_df(tickers: list[str]) -> dict:
     import datetime
 
     end_date = datetime.datetime.now() - datetime.timedelta(days=1)
-    start_date = end_date - datetime.timedelta(days=365)
+    start_date = end_date - datetime.timedelta(days=3000)
     dfs = {}
 
     for ticker in tickers:

@@ -39,5 +39,17 @@ while True:
 
 
 data = yf_etl.fetch_data(ticker, database_location)
-print(data.columns)
-yf_model_methods.random_forest_model(ticker, data)
+
+# select model
+available_models = ["RF", "ARMA"]
+while True:
+    chosen_model = input(f"Select a model : {available_models}").upper()
+    if chosen_model in available_models:
+        break
+    else:
+        print("Model not available, try again.")
+
+if chosen_model == "RF":
+    yf_model_methods.random_forest_model(ticker, data)
+else:
+    yf_model_methods.arma_model(ticker, data)
